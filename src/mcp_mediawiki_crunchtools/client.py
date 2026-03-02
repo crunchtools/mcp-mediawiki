@@ -195,6 +195,8 @@ class MediaWikiClient:
         Returns:
             Combined query results.
         """
+        await self._login()
+
         all_params = {
             "action": "query",
             "format": "json",
@@ -256,6 +258,7 @@ class MediaWikiClient:
         Returns:
             Parse result data.
         """
+        await self._login()
         client = await self._get_client()
 
         all_params = {
