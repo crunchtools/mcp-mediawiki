@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     name="mcp-mediawiki-crunchtools",
-    version="0.1.0",
+    version="0.1.1",
     instructions=(
         "Secure MCP server for MediaWiki wikis. Search, read, create, edit, "
         "and manage wiki pages, categories, files, and more. Works with any "
