@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: MediaWiki API Documentation
+    url: https://www.mediawiki.org/wiki/API:Main_page
+    about: Check the MediaWiki Action API docs for endpoint behavior questions
