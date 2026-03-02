@@ -380,19 +380,19 @@ class TestPageTools:
 
     async def test_create_page(self) -> None:
         """Create page should POST with createonly flag."""
-        login_token_resp = _mock_response(
+        login_needtoken_resp = _mock_response(
             json_data={
-                "query": {"tokens": {"logintoken": "abc123+\\"}},
+                "login": {"result": "NeedToken", "token": "abc123+\\"},
+            },
+        )
+        login_success_resp = _mock_response(
+            json_data={
+                "login": {"result": "Success", "lgusername": "testuser"},
             },
         )
         csrf_token_resp = _mock_response(
             json_data={
                 "query": {"tokens": {"csrftoken": "csrf456+\\"}},
-            },
-        )
-        login_resp = _mock_response(
-            json_data={
-                "clientlogin": {"status": "PASS", "username": "testuser"},
             },
         )
         edit_resp = _mock_response(
@@ -410,10 +410,10 @@ class TestPageTools:
         try:
             mock_http = AsyncMock(spec=httpx.AsyncClient)
             mock_http.get = AsyncMock(
-                side_effect=[login_token_resp, csrf_token_resp],
+                side_effect=[csrf_token_resp],
             )
             mock_http.post = AsyncMock(
-                side_effect=[login_resp, edit_resp],
+                side_effect=[login_needtoken_resp, login_success_resp, edit_resp],
             )
 
             with patch.object(httpx, "AsyncClient", return_value=mock_http):
@@ -436,19 +436,19 @@ class TestPageTools:
 
     async def test_edit_page(self) -> None:
         """Edit page should POST content."""
-        login_token_resp = _mock_response(
+        login_needtoken_resp = _mock_response(
             json_data={
-                "query": {"tokens": {"logintoken": "abc123+\\"}},
+                "login": {"result": "NeedToken", "token": "abc123+\\"},
+            },
+        )
+        login_success_resp = _mock_response(
+            json_data={
+                "login": {"result": "Success", "lgusername": "testuser"},
             },
         )
         csrf_token_resp = _mock_response(
             json_data={
                 "query": {"tokens": {"csrftoken": "csrf456+\\"}},
-            },
-        )
-        login_resp = _mock_response(
-            json_data={
-                "clientlogin": {"status": "PASS", "username": "testuser"},
             },
         )
         edit_resp = _mock_response(
@@ -466,10 +466,10 @@ class TestPageTools:
         try:
             mock_http = AsyncMock(spec=httpx.AsyncClient)
             mock_http.get = AsyncMock(
-                side_effect=[login_token_resp, csrf_token_resp],
+                side_effect=[csrf_token_resp],
             )
             mock_http.post = AsyncMock(
-                side_effect=[login_resp, edit_resp],
+                side_effect=[login_needtoken_resp, login_success_resp, edit_resp],
             )
 
             with patch.object(httpx, "AsyncClient", return_value=mock_http):

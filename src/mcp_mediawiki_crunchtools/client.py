@@ -74,7 +74,11 @@ class MediaWikiClient:
             self._csrf_token = None
 
     async def _login(self) -> None:
-        """Authenticate via clientlogin if credentials are configured.
+        """Authenticate via action=login if credentials are configured.
+
+        Uses the legacy action=login API which is exempted from read
+        restrictions on private wikis (where action=query is blocked
+        for anonymous users).
 
         Raises:
             AuthenticationError: If login fails.
@@ -84,35 +88,41 @@ class MediaWikiClient:
 
         client = await self._get_client()
 
-        token_resp = await client.get(
+        token_resp = await client.post(
             self._config.api_url,
-            params={
-                "action": "query",
-                "meta": "tokens",
-                "type": "login",
+            data={
+                "action": "login",
+                "lgname": self._config.username,
+                "lgpassword": self._config.password,
                 "format": "json",
             },
         )
         token_data = token_resp.json()
-        login_token = token_data["query"]["tokens"]["logintoken"]
+        login_result = token_data.get("login", {})
+
+        if login_result.get("result") == "NeedToken":
+            login_token = login_result["token"]
+        else:
+            raise AuthenticationError(
+                f"Unexpected login response: {login_result.get('result', 'unknown')}"
+            )
 
         login_resp = await client.post(
             self._config.api_url,
             data={
-                "action": "clientlogin",
-                "username": self._config.username,
-                "password": self._config.password,
-                "logintoken": login_token,
-                "loginreturnurl": self._config.wiki_url,
+                "action": "login",
+                "lgname": self._config.username,
+                "lgpassword": self._config.password,
+                "lgtoken": login_token,
                 "format": "json",
             },
         )
         login_data = login_resp.json()
+        status = login_data.get("login", {}).get("result")
 
-        status = login_data.get("clientlogin", {}).get("status")
-        if status != "PASS":
-            message = login_data.get("clientlogin", {}).get("message", "Unknown error")
-            raise AuthenticationError(message)
+        if status != "Success":
+            message = login_data.get("login", {}).get("reason", status or "Unknown error")
+            raise AuthenticationError(f"Login failed: {message}")
 
         self._logged_in = True
         logger.info("Successfully authenticated as %s", self._config.username)
