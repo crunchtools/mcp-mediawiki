@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.crunchtools/mediawiki",
+  "title": "MCP Mediawiki",
+  "description": "Secure MCP server for MediaWiki wikis — search, pages, categories, and more",
+  "repository": {
+    "url": "https://github.com/crunchtools/mcp-mediawiki",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-mediawiki-crunchtools",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

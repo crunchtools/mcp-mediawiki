@@ -110,3 +110,5 @@ podman build -f Containerfile .
 ## License
 
 AGPL-3.0-or-later
+
+<!-- mcp-name: io.github.crunchtools/mediawiki -->
