@@ -24,7 +24,10 @@ LABEL name="mcp-mediawiki-crunchtools" \
       maintainer="crunchtools.com" \
       url="https://github.com/crunchtools/mcp-mediawiki" \
       io.k8s.display-name="MCP MediaWiki CrunchTools" \
-      io.openshift.tags="mcp,mediawiki,wiki"
+      io.openshift.tags="mcp,mediawiki,wiki" \
+      org.opencontainers.image.source="https://github.com/crunchtools/mcp-mediawiki" \
+      org.opencontainers.image.description="Secure MCP server for MediaWiki wikis" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 # Set working directory
 WORKDIR /app
