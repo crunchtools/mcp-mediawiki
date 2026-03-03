@@ -3,6 +3,8 @@
 > **Version:** 1.0.0
 > **Ratified:** 2026-03-01
 > **Status:** Active
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.0.0
+> **Profile:** MCP Server
 
 This constitution establishes the core principles, constraints, and workflows that govern all development on mcp-mediawiki-crunchtools.
 
@@ -106,7 +108,31 @@ Every tool MUST have a corresponding mocked test. Tests use `httpx.AsyncClient` 
 
 ---
 
-## IV. Code Quality Gates
+## IV. Gourmand (AI Slop Detection)
+
+All code MUST pass `gourmand --full .` with **zero violations** before merge. Gourmand is a CI gate in GitHub Actions.
+
+### Configuration
+
+- `gourmand.toml` — Check settings, excluded paths
+- `gourmand-exceptions.toml` — Documented exceptions with justifications
+- `.gourmand-cache/` — Must be in `.gitignore`
+
+### Exception Policy
+
+Exceptions MUST have documented justifications in `gourmand-exceptions.toml`. Acceptable reasons:
+- Standard API patterns (HTTP status codes, pagination params)
+- Test-specific patterns (intentional invalid input)
+- Framework requirements (CLAUDE.md for Claude Code)
+
+Unacceptable reasons:
+- "The code is special"
+- "The threshold is too strict"
+- Rewording to avoid detection
+
+---
+
+## V. Code Quality Gates
 
 Every code change must pass through these gates in order:
 
@@ -118,7 +144,7 @@ Every code change must pass through these gates in order:
 
 ---
 
-## V. Naming Conventions
+## VI. Naming Conventions
 
 | Context | Name |
 |---------|------|
@@ -133,7 +159,7 @@ Every code change must pass through these gates in order:
 
 ---
 
-## VI. Development Workflow
+## VII. Development Workflow
 
 ### Adding a New Tool
 
@@ -147,7 +173,14 @@ Every code change must pass through these gates in order:
 
 ---
 
-## VII. Governance
+## VIII. Governance
+
+### Amendment Process
+
+1. Create a PR with proposed changes to this constitution
+2. Document rationale in PR description
+3. Require maintainer approval
+4. Update version number upon merge
 
 ### Ratification History
 
