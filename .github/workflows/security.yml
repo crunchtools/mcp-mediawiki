@@ -105,7 +105,7 @@ jobs:
           docker build -f Containerfile -t mcp-mediawiki:scan .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "mcp-mediawiki:scan"
           format: "sarif"
