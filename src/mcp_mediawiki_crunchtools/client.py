@@ -145,13 +145,11 @@ class MediaWikiClient:
                 "format": "json",
             },
         )
-        data = resp.json()
-        self._csrf_token = data["query"]["tokens"]["csrftoken"]
+        token_response = resp.json()
+        self._csrf_token = token_response["query"]["tokens"]["csrftoken"]
         return self._csrf_token
 
-    async def _fetch_query(
-        self, all_params: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _fetch_query(self, all_params: dict[str, Any]) -> dict[str, Any]:
         """Execute a single query request and validate the response.
 
         Args:
@@ -182,12 +180,12 @@ class MediaWikiClient:
                 f"HTTP {response.status_code}",
             )
 
-        data: dict[str, Any] = response.json()
+        response_json: dict[str, Any] = response.json()
 
-        if "error" in data:
-            self._handle_api_error(data["error"])
+        if "error" in response_json:
+            self._handle_api_error(response_json["error"])
 
-        return data
+        return response_json
 
     async def query(
         self,
@@ -214,12 +212,12 @@ class MediaWikiClient:
             **params,
         }
 
-        data = await self._fetch_query(all_params)
+        query_result = await self._fetch_query(all_params)
 
-        if max_pages <= 1 or "continue" not in data or not continue_key:
-            return data
+        if max_pages <= 1 or "continue" not in query_result or not continue_key:
+            return query_result
 
-        return await self._fetch_continuation(all_params, data, max_pages)
+        return await self._fetch_continuation(all_params, query_result, max_pages)
 
     async def _fetch_continuation(
         self,
@@ -238,17 +236,17 @@ class MediaWikiClient:
             Combined query results from all pages.
         """
         combined: dict[str, Any] = dict(initial_data.get("query", {}))
-        data = initial_data
+        page_result = initial_data
         pages_fetched = 1
 
-        while "continue" in data and pages_fetched < max_pages:
-            next_params = {**all_params, **data["continue"]}
+        while "continue" in page_result and pages_fetched < max_pages:
+            next_params = {**all_params, **page_result["continue"]}
             try:
-                data = await self._fetch_query(next_params)
+                page_result = await self._fetch_query(next_params)
             except (MediaWikiApiError, httpx.HTTPError):
                 break
 
-            page_query = data.get("query", {})
+            page_query = page_result.get("query", {})
             for key, value in page_query.items():
                 if isinstance(value, list) and key in combined:
                     combined[key].extend(value)
@@ -294,12 +292,12 @@ class MediaWikiClient:
                 f"HTTP {response.status_code}",
             )
 
-        data: dict[str, Any] = response.json()
+        response_json: dict[str, Any] = response.json()
 
-        if "error" in data:
-            self._handle_api_error(data["error"])
+        if "error" in response_json:
+            self._handle_api_error(response_json["error"])
 
-        return data
+        return response_json
 
     async def post_action(
         self,

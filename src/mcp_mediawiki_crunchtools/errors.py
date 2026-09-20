@@ -4,6 +4,8 @@ This module defines exception classes that are safe to expose to MCP clients.
 Internal errors should be caught and converted to UserError before propagating.
 """
 
+import os
+
 SAFE_ID_MAX_LENGTH = 80
 
 
@@ -14,13 +16,9 @@ class UserError(Exception):
     to avoid leaking sensitive information like passwords or internal paths.
     """
 
-    pass
-
 
 class ConfigurationError(UserError):
     """Error in server configuration."""
-
-    pass
 
 
 class MediaWikiApiError(UserError):
@@ -30,8 +28,6 @@ class MediaWikiApiError(UserError):
     """
 
     def __init__(self, code: str, message: str) -> None:
-        import os
-
         password = os.environ.get("MEDIAWIKI_PASSWORD", "")
         safe_message = message.replace(password, "***") if password else message
         http_pass = os.environ.get("MEDIAWIKI_HTTP_PASS", "")
@@ -77,5 +73,3 @@ class AuthenticationError(UserError):
 
 class ValidationError(UserError):
     """Input validation error."""
-
-    pass
