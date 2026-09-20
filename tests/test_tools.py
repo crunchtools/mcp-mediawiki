@@ -4,6 +4,7 @@ These tests verify tool behavior without making actual API calls.
 Integration tests with a real MediaWiki instance should be run separately.
 """
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -42,8 +43,6 @@ class TestErrorSafety:
 
     def test_mediawiki_api_error_sanitizes_password(self) -> None:
         """MediaWikiApiError should sanitize passwords from messages."""
-        import os
-
         from mcp_mediawiki_crunchtools.errors import MediaWikiApiError
 
         os.environ["MEDIAWIKI_PASSWORD"] = "super_secret_pass_123"
@@ -57,8 +56,6 @@ class TestErrorSafety:
 
     def test_mediawiki_api_error_sanitizes_http_pass(self) -> None:
         """MediaWikiApiError should sanitize HTTP passwords from messages."""
-        import os
-
         from mcp_mediawiki_crunchtools.errors import MediaWikiApiError
 
         os.environ["MEDIAWIKI_HTTP_PASS"] = "http_secret_456"
@@ -87,8 +84,6 @@ class TestConfigSafety:
 
     def test_config_repr_hides_password(self) -> None:
         """Config repr should never show the password."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
         os.environ["MEDIAWIKI_USERNAME"] = "testuser"
         os.environ["MEDIAWIKI_PASSWORD"] = "secret_password_789"
@@ -107,8 +102,6 @@ class TestConfigSafety:
 
     def test_config_requires_url(self) -> None:
         """Config should require MEDIAWIKI_URL."""
-        import os
-
         from mcp_mediawiki_crunchtools.config import Config
         from mcp_mediawiki_crunchtools.errors import ConfigurationError
 
@@ -127,8 +120,6 @@ class TestConfigSafety:
 
     def test_config_api_url(self) -> None:
         """Config should derive api.php URL from wiki URL."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
 
         try:
@@ -142,8 +133,6 @@ class TestConfigSafety:
 
     def test_config_strips_trailing_slash(self) -> None:
         """Config should strip trailing slash from URL."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w/"
 
         try:
@@ -156,8 +145,6 @@ class TestConfigSafety:
 
     def test_config_rejects_http(self) -> None:
         """Config should reject non-HTTPS URLs for non-localhost."""
-        import os
-
         from mcp_mediawiki_crunchtools.config import Config
         from mcp_mediawiki_crunchtools.errors import ConfigurationError
 
@@ -171,8 +158,6 @@ class TestConfigSafety:
 
     def test_config_allows_localhost_http(self) -> None:
         """Config should allow HTTP for localhost."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "http://localhost:8080/w"
 
         try:
@@ -185,8 +170,6 @@ class TestConfigSafety:
 
     def test_config_no_credentials(self) -> None:
         """Config should work without credentials (read-only mode)."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://en.wikipedia.org/w"
         os.environ.pop("MEDIAWIKI_USERNAME", None)
         os.environ.pop("MEDIAWIKI_PASSWORD", None)
@@ -203,8 +186,6 @@ class TestConfigSafety:
 
     def test_config_requires_password_with_username(self) -> None:
         """Config should require password when username is set."""
-        import os
-
         from mcp_mediawiki_crunchtools.config import Config
         from mcp_mediawiki_crunchtools.errors import ConfigurationError
 
@@ -221,8 +202,6 @@ class TestConfigSafety:
 
     def test_config_http_auth(self) -> None:
         """Config should support HTTP Basic Auth."""
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
         os.environ["MEDIAWIKI_HTTP_USER"] = "httpuser"
         os.environ["MEDIAWIKI_HTTP_PASS"] = "httppass"
@@ -236,7 +215,6 @@ class TestConfigSafety:
             del os.environ["MEDIAWIKI_URL"]
             del os.environ["MEDIAWIKI_HTTP_USER"]
             del os.environ["MEDIAWIKI_HTTP_PASS"]
-
 
 
 class TestPageTools:
@@ -345,8 +323,6 @@ class TestPageTools:
             },
         )
 
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
         os.environ["MEDIAWIKI_USERNAME"] = "testuser"
         os.environ["MEDIAWIKI_PASSWORD"] = "testpass"
@@ -370,7 +346,8 @@ class TestPageTools:
                 from mcp_mediawiki_crunchtools.tools import create_page
 
                 result = await create_page(
-                    title="New Page", content="Hello world",
+                    title="New Page",
+                    content="Hello world",
                 )
                 assert "edit" in result
                 assert result["edit"]["result"] == "Success"
@@ -401,8 +378,6 @@ class TestPageTools:
             },
         )
 
-        import os
-
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
         os.environ["MEDIAWIKI_USERNAME"] = "testuser"
         os.environ["MEDIAWIKI_PASSWORD"] = "testpass"
@@ -426,14 +401,14 @@ class TestPageTools:
                 from mcp_mediawiki_crunchtools.tools import edit_page
 
                 result = await edit_page(
-                    title="Test", content="Updated content",
+                    title="Test",
+                    content="Updated content",
                 )
                 assert "edit" in result
 
         finally:
             del os.environ["MEDIAWIKI_USERNAME"]
             del os.environ["MEDIAWIKI_PASSWORD"]
-
 
 
 class TestCategoryTools:
@@ -499,7 +474,6 @@ class TestCategoryTools:
 
             result = await get_page_categories(title="Test")
             assert "query" in result
-
 
 
 class TestRecentChanges:
@@ -679,7 +653,6 @@ class TestFileTools:
             result = await list_files()
             assert "query" in result
             assert "allimages" in result["query"]
-
 
 
 class TestClientErrorHandling:

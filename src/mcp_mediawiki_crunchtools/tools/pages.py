@@ -8,6 +8,8 @@ from typing import Any
 from ..client import get_client
 from ..models import CreatePageInput, EditPageInput, MovePageInput, validate_page_title
 
+MAX_SEARCH_RESULTS = 50
+
 
 async def search(
     query: str,
@@ -33,7 +35,7 @@ async def search(
             "list": "search",
             "srsearch": query.strip(),
             "srnamespace": namespace,
-            "srlimit": min(limit, 50),
+            "srlimit": min(limit, MAX_SEARCH_RESULTS),
             "srprop": "snippet|titlesnippet|size|wordcount|timestamp",
         },
     )
@@ -164,7 +166,10 @@ async def edit_page(
         Edit result with revision info.
     """
     validated = EditPageInput(
-        title=title, content=content, summary=summary, minor=minor,
+        title=title,
+        content=content,
+        summary=summary,
+        minor=minor,
     )
 
     client = get_client()
