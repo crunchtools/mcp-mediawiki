@@ -8,8 +8,27 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-10
+
+### Added
+
+- The fifteen tools that only read publish `readOnlyHint: true`: every tool
+  except `create_page`, `edit_page`, `delete_page` and `move_page`. A gateway
+  uses it to decide whether an invalid optional argument may be dropped or must
+  refuse the call (crunchtools/constitution#35).
+- Tests pin every registered tool into `READ_ONLY` or `WRITES`, and check that
+  a read-only tool sends the wiki only `action=query` or `action=parse` (plus
+  the `action=login` handshake) and never asks for a CSRF token.
+
+### Fixed
+
+- The Containerfile `version` label said 0.1.3 through the 0.1.4 release; it
+  carries the release version again.
+
 ### Changed
 
+- Inherits constitution v1.22.0; the workflow pins and the pre-commit hook rev
+  move with it.
 - Constitution is now a v1.18.0 manifest: it holds only what is specific to
   this repo; fleet and profile rules apply by reference.
 - Constitution validation is pinned to the inherited release via
