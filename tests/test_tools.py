@@ -38,6 +38,149 @@ class TestToolRegistration:
         assert len(__all__) == 19
 
 
+READ_ONLY = frozenset(
+    {
+        "search_tool",
+        "get_page_tool",
+        "get_page_html_tool",
+        "list_pages_tool",
+        "list_categories_tool",
+        "get_category_members_tool",
+        "get_page_categories_tool",
+        "list_recent_changes_tool",
+        "parse_wikitext_tool",
+        "get_site_info_tool",
+        "list_namespaces_tool",
+        "get_user_info_tool",
+        "list_user_contributions_tool",
+        "get_file_info_tool",
+        "list_files_tool",
+    }
+)
+WRITES = frozenset(
+    {
+        "create_page_tool",
+        "edit_page_tool",
+        "delete_page_tool",
+        "move_page_tool",
+    }
+)
+
+# Arguments that satisfy each tool's required parameters.
+TOOL_CALLS: dict[str, dict[str, object]] = {
+    "search_tool": {"query": "podman"},
+    "get_page_tool": {"title": "Main Page"},
+    "get_page_html_tool": {"title": "Main Page"},
+    "list_pages_tool": {"prefix": "Ma"},
+    "list_categories_tool": {"prefix": "Li"},
+    "get_category_members_tool": {"category": "Linux"},
+    "get_page_categories_tool": {"title": "Main Page"},
+    "list_recent_changes_tool": {"limit": 5},
+    "parse_wikitext_tool": {"wikitext": "'''bold'''", "title": "Main Page"},
+    "get_site_info_tool": {},
+    "list_namespaces_tool": {},
+    "get_user_info_tool": {"username": "Admin"},
+    "list_user_contributions_tool": {"username": "Admin"},
+    "get_file_info_tool": {"filename": "Logo.png"},
+    "list_files_tool": {"prefix": "Lo"},
+    "create_page_tool": {"title": "New Page", "content": "text"},
+    "edit_page_tool": {"title": "Main Page", "content": "text"},
+    "delete_page_tool": {"title": "Main Page"},
+    "move_page_tool": {"from_title": "Old", "to_title": "New"},
+}
+
+# The Action API takes reads and writes alike over GET or POST, so the HTTP
+# method says nothing. The `action` parameter is what separates them.
+READ_ACTIONS = frozenset({"query", "parse"})
+# Sent before a read when credentials are configured, because a private wiki
+# refuses an anonymous action=query. It opens a session held in the process's
+# cookie jar and changes no wiki content.
+SESSION_ACTIONS = frozenset({"login"})
+
+
+def _recording_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[AsyncMock, list[dict[str, object]]]:
+    """Mock the HTTP layer with credentials set; record each request's parameters."""
+    monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
+    monkeypatch.setenv("MEDIAWIKI_USERNAME", "bot")
+    monkeypatch.setenv("MEDIAWIKI_PASSWORD", "botpass")
+    sent: list[dict[str, object]] = []
+
+    async def _get(_url: str, params: dict[str, object]) -> httpx.Response:
+        sent.append(params)
+        return _mock_response(
+            json_data={"query": {"tokens": {"csrftoken": "csrf+\\"}}, "parse": {}}
+        )
+
+    async def _post(_url: str, data: dict[str, object]) -> httpx.Response:
+        sent.append(data)
+        if data["action"] != "login":
+            return _mock_response(json_data={data["action"]: {"result": "Success"}})
+        if "lgtoken" in data:
+            return _mock_response(json_data={"login": {"result": "Success"}})
+        return _mock_response(json_data={"login": {"result": "NeedToken", "token": "t"}})
+
+    mock_http = AsyncMock(spec=httpx.AsyncClient)
+    mock_http.get = AsyncMock(side_effect=_get)
+    mock_http.post = AsyncMock(side_effect=_post)
+    return mock_http, sent
+
+
+class TestReadOnlyAnnotation:
+    """Every registered tool is classified, and the reads really only read."""
+
+    @pytest.mark.asyncio
+    async def test_every_tool_is_classified(self) -> None:
+        from mcp_mediawiki_crunchtools.server import mcp
+
+        tools = await mcp.list_tools()
+        assert READ_ONLY.isdisjoint(WRITES)
+        assert {tool.name for tool in tools} == READ_ONLY | WRITES
+        annotated = {
+            tool.name
+            for tool in tools
+            if tool.annotations is not None
+            and tool.annotations.model_dump(by_alias=True).get("readOnlyHint") is True
+        }
+        assert annotated == READ_ONLY
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", sorted(READ_ONLY))
+    async def test_read_only_tool_sends_only_read_actions(
+        self, name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mcp_mediawiki_crunchtools.server import mcp
+
+        mock_http, sent = _recording_client(monkeypatch)
+        with patch.object(httpx, "AsyncClient", return_value=mock_http):
+            await mcp.call_tool(name, TOOL_CALLS[name])
+
+        actions = [request["action"] for request in sent]
+        assert set(actions) <= READ_ACTIONS | SESSION_ACTIONS
+        assert set(actions) & READ_ACTIONS
+        for request in sent:
+            # A CSRF token is fetched only to spend it on a write.
+            assert request.get("meta") != "tokens"
+            assert "token" not in request
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", sorted(WRITES))
+    async def test_write_tool_is_seen_writing(
+        self, name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The recorder above does see a write, so the read assertion can fail."""
+        from mcp_mediawiki_crunchtools.server import mcp
+
+        mock_http, sent = _recording_client(monkeypatch)
+        with patch.object(httpx, "AsyncClient", return_value=mock_http):
+            await mcp.call_tool(name, TOOL_CALLS[name])
+
+        actions = {request["action"] for request in sent}
+        assert actions - READ_ACTIONS - SESSION_ACTIONS
+        assert any("token" in request for request in sent)
+
+
 class TestErrorSafety:
     """Tests to verify error messages don't leak sensitive data."""
 

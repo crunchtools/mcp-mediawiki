@@ -32,9 +32,13 @@ from .tools import (
 
 logger = logging.getLogger(__name__)
 
+# A gateway drops an invalid optional argument only on a tool annotated read-only;
+# on anything else it refuses the call. Only tools that change nothing on the wiki get this.
+READ_ONLY = {"readOnlyHint": True}
+
 mcp = FastMCP(
     name="mcp-mediawiki-crunchtools",
-    version="0.1.4",
+    version="0.2.0",
     instructions=(
         "Secure MCP server for MediaWiki wikis. Search, read, create, edit, "
         "and manage wiki pages, categories, files, and more. Works with any "
@@ -43,7 +47,7 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def search_tool(
     query: str,
     namespace: int = 0,
@@ -62,7 +66,7 @@ async def search_tool(
     return await search(query=query, namespace=namespace, limit=limit)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_page_tool(
     title: str,
 ) -> dict[str, Any]:
@@ -77,7 +81,7 @@ async def get_page_tool(
     return await get_page(title=title)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_page_html_tool(
     title: str,
 ) -> dict[str, Any]:
@@ -92,7 +96,7 @@ async def get_page_html_tool(
     return await get_page_html(title=title)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_pages_tool(
     prefix: str | None = None,
     namespace: int = 0,
@@ -111,7 +115,10 @@ async def list_pages_tool(
         List of page titles with metadata
     """
     return await list_pages(
-        prefix=prefix, namespace=namespace, limit=limit, from_title=from_title,
+        prefix=prefix,
+        namespace=namespace,
+        limit=limit,
+        from_title=from_title,
     )
 
 
@@ -153,7 +160,10 @@ async def edit_page_tool(
         Edit result with revision info
     """
     return await edit_page(
-        title=title, content=content, summary=summary, minor=minor,
+        title=title,
+        content=content,
+        summary=summary,
+        minor=minor,
     )
 
 
@@ -195,13 +205,15 @@ async def move_page_tool(
         Move result with old and new titles
     """
     return await move_page(
-        from_title=from_title, to_title=to_title, reason=reason,
-        move_talk=move_talk, no_redirect=no_redirect,
+        from_title=from_title,
+        to_title=to_title,
+        reason=reason,
+        move_talk=move_talk,
+        no_redirect=no_redirect,
     )
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_categories_tool(
     prefix: str | None = None,
     limit: int = 50,
@@ -218,11 +230,13 @@ async def list_categories_tool(
         List of category names with metadata
     """
     return await list_categories(
-        prefix=prefix, limit=limit, from_name=from_name,
+        prefix=prefix,
+        limit=limit,
+        from_name=from_name,
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_category_members_tool(
     category: str,
     member_type: str | None = None,
@@ -241,12 +255,14 @@ async def get_category_members_tool(
         List of category members with titles and types
     """
     return await get_category_members(
-        category=category, member_type=member_type,
-        limit=limit, continue_from=continue_from,
+        category=category,
+        member_type=member_type,
+        limit=limit,
+        continue_from=continue_from,
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_page_categories_tool(
     title: str,
     limit: int = 50,
@@ -263,12 +279,13 @@ async def get_page_categories_tool(
         List of categories the page belongs to
     """
     return await get_page_categories(
-        title=title, limit=limit, show_hidden=show_hidden,
+        title=title,
+        limit=limit,
+        show_hidden=show_hidden,
     )
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_recent_changes_tool(
     namespace: int | None = None,
     limit: int = 50,
@@ -289,13 +306,15 @@ async def list_recent_changes_tool(
         List of recent changes with user, title, timestamp, and comment
     """
     return await list_recent_changes(
-        namespace=namespace, limit=limit, tag=tag,
-        change_type=change_type, from_timestamp=from_timestamp,
+        namespace=namespace,
+        limit=limit,
+        tag=tag,
+        change_type=change_type,
+        from_timestamp=from_timestamp,
     )
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def parse_wikitext_tool(
     wikitext: str,
     title: str | None = None,
@@ -312,8 +331,7 @@ async def parse_wikitext_tool(
     return await parse_wikitext(wikitext=wikitext, title=title)
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_site_info_tool() -> dict[str, Any]:
     """Get wiki configuration and version info.
 
@@ -323,7 +341,7 @@ async def get_site_info_tool() -> dict[str, Any]:
     return await get_site_info()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_namespaces_tool() -> dict[str, Any]:
     """List all namespaces on the wiki.
 
@@ -333,8 +351,7 @@ async def list_namespaces_tool() -> dict[str, Any]:
     return await list_namespaces()
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_user_info_tool(
     username: str,
 ) -> dict[str, Any]:
@@ -349,7 +366,7 @@ async def get_user_info_tool(
     return await get_user_info(username=username)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_user_contributions_tool(
     username: str,
     namespace: int | None = None,
@@ -368,13 +385,14 @@ async def list_user_contributions_tool(
         List of user contributions with titles, timestamps, and comments
     """
     return await list_user_contributions(
-        username=username, namespace=namespace,
-        limit=limit, from_timestamp=from_timestamp,
+        username=username,
+        namespace=namespace,
+        limit=limit,
+        from_timestamp=from_timestamp,
     )
 
 
-
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def get_file_info_tool(
     filename: str,
 ) -> dict[str, Any]:
@@ -389,7 +407,7 @@ async def get_file_info_tool(
     return await get_file_info(filename=filename)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_files_tool(
     prefix: str | None = None,
     limit: int = 50,
@@ -408,5 +426,8 @@ async def list_files_tool(
         List of files with metadata
     """
     return await list_files(
-        prefix=prefix, limit=limit, mime_type=mime_type, from_name=from_name,
+        prefix=prefix,
+        limit=limit,
+        mime_type=mime_type,
+        from_name=from_name,
     )
