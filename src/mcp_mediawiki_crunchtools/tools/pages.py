@@ -34,6 +34,9 @@ async def search(
         params={
             "list": "search",
             "srsearch": query.strip(),
+            # Without srwhat, MediaWiki 1.43 on the MySQL backend returns
+            # zero hits for words its full-text search finds
+            "srwhat": "text",
             "srnamespace": namespace,
             "srlimit": min(limit, MAX_SEARCH_RESULTS),
             "srprop": "snippet|titlesnippet|size|wordcount|timestamp",

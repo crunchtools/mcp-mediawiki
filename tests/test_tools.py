@@ -383,6 +383,16 @@ class TestPageTools:
             assert "query" in result
             assert "search" in result["query"]
 
+    async def test_search_asks_for_full_text(self) -> None:
+        """Search should request a full-text search, not MediaWiki's default."""
+        client = AsyncMock()
+        with patch("mcp_mediawiki_crunchtools.tools.pages.get_client", return_value=client):
+            from mcp_mediawiki_crunchtools.tools import search
+
+            await search(query="josui")
+            params = client.query.call_args.kwargs["params"]
+            assert params["srwhat"] == "text"
+
     async def test_get_page(self) -> None:
         """Get page should return page content."""
         mock_resp = _mock_response(

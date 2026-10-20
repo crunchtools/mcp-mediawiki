@@ -8,6 +8,13 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-20
+
+### Fixed
+
+- `search_tool` returned no results on MediaWiki 1.43 with the MySQL search
+  backend. It now asks for a full-text search (`srwhat=text`).
+
 ### Changed
 
 - Container base images pinned to `quay.io/hummingbird/python:3.14*` instead of
