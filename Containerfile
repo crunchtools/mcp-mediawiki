@@ -28,7 +28,7 @@ FROM quay.io/hummingbird/python:3.14
 
 # Labels for container metadata
 LABEL name="mcp-mediawiki-crunchtools" \
-      version="0.2.1" \
+      version="0.2.2" \
       summary="Secure MCP server for MediaWiki wikis" \
       description="A security-focused MCP server for MediaWiki built on Red Hat UBI" \
       maintainer="crunchtools.com" \
