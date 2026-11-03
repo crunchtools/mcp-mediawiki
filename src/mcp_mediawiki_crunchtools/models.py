@@ -40,9 +40,7 @@ def validate_page_title(title: str) -> str:
         raise ValueError(f"Page title must not exceed {MAX_TITLE_LENGTH} characters")
 
     if not PAGE_TITLE_PATTERN.match(title):
-        raise ValueError(
-            "Page title contains forbidden characters (# < > [ ] { } |)"
-        )
+        raise ValueError("Page title contains forbidden characters (# < > [ ] { } |)")
 
     return title
 
@@ -69,15 +67,11 @@ class CreatePageInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(
-        ..., min_length=1, max_length=MAX_TITLE_LENGTH, description="Page title"
-    )
+    title: str = Field(..., min_length=1, max_length=MAX_TITLE_LENGTH, description="Page title")
     content: str = Field(
         ..., min_length=1, max_length=MAX_CONTENT_LENGTH, description="Page wikitext content"
     )
-    summary: str = Field(
-        default="", max_length=MAX_SUMMARY_LENGTH, description="Edit summary"
-    )
+    summary: str = Field(default="", max_length=MAX_SUMMARY_LENGTH, description="Edit summary")
 
     @field_validator("title")
     @classmethod
@@ -90,18 +84,12 @@ class EditPageInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(
-        ..., min_length=1, max_length=MAX_TITLE_LENGTH, description="Page title"
-    )
+    title: str = Field(..., min_length=1, max_length=MAX_TITLE_LENGTH, description="Page title")
     content: str = Field(
         ..., min_length=1, max_length=MAX_CONTENT_LENGTH, description="New page wikitext content"
     )
-    summary: str = Field(
-        default="", max_length=MAX_SUMMARY_LENGTH, description="Edit summary"
-    )
-    minor: bool = Field(
-        default=False, description="Mark as minor edit"
-    )
+    summary: str = Field(default="", max_length=MAX_SUMMARY_LENGTH, description="Edit summary")
+    minor: bool = Field(default=False, description="Mark as minor edit")
 
     @field_validator("title")
     @classmethod
@@ -120,15 +108,9 @@ class MovePageInput(BaseModel):
     to_title: str = Field(
         ..., min_length=1, max_length=MAX_TITLE_LENGTH, description="New page title"
     )
-    reason: str = Field(
-        default="", max_length=MAX_SUMMARY_LENGTH, description="Reason for move"
-    )
-    move_talk: bool = Field(
-        default=True, description="Also move the talk page"
-    )
-    no_redirect: bool = Field(
-        default=False, description="Do not create a redirect"
-    )
+    reason: str = Field(default="", max_length=MAX_SUMMARY_LENGTH, description="Reason for move")
+    move_talk: bool = Field(default=True, description="Also move the talk page")
+    no_redirect: bool = Field(default=False, description="Do not create a redirect")
 
     @field_validator("from_title", "to_title")
     @classmethod

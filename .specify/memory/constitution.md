@@ -1,8 +1,8 @@
 # mcp-mediawiki-crunchtools Constitution
 
-> **Version:** 1.1.0
+> **Version:** 1.2.0
 > **Ratified:** 2026-03-01
-> **Amended:** 2026-10-02
+> **Amended:** 2026-11-03
 > **Status:** Active
 > **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.28.0
 > **Profile:** MCP Server
@@ -32,7 +32,9 @@ restated here.
 ## Any-Instance Compatibility
 
 The server works with any MediaWiki instance. `MEDIAWIKI_URL` (required) is
-the wiki base, and must be HTTPS unless the host is localhost. Public wikis
+the wiki base, and must be HTTPS unless the host is localhost, or unless
+`MEDIAWIKI_ALLOW_HTTP=true` is set and the host is a private IP literal (a
+wiki on a private container network with no TLS endpoint). Public wikis
 work without auth, private wikis use clientlogin, and `.htaccess`-protected
 wikis use HTTP Basic Auth.
 
@@ -54,3 +56,4 @@ wikis use HTTP Basic Auth.
 | 1.0.1 | 2026-03-16 | Add Section VI (Container Conventions); renumber VI-VIII to VII-IX |
 | 1.0.2 | 2026-09-25 | Inherit constitution v1.17.0 (Gatehouse gates) |
 | 1.1.0 | 2026-10-02 | Manifest under constitution v1.18.0: profile restatement removed, mcp-mediawiki specifics kept |
+| 1.2.0 | 2026-11-03 | HTTPS rule allows plain HTTP to a private IP literal behind `MEDIAWIKI_ALLOW_HTTP=true` |

@@ -47,7 +47,7 @@ Layer 2: Credential Handling
   - Passwords stored as SecretStr
 
 Layer 3: API Client Hardening
-  - HTTPS enforcement for non-localhost URLs
+  - HTTPS enforcement for non-localhost URLs (explicit opt-out for private networks)
   - TLS certificate validation (httpx default)
   - Request timeout enforcement (30s)
   - Response size limits (10MB)
@@ -85,7 +85,10 @@ Write operations use MediaWiki's clientlogin flow:
 The wiki URL is validated to prevent SSRF:
 
 - Must be a valid URL with scheme and netloc
-- Must use HTTPS unless connecting to localhost
+- Must use HTTPS unless connecting to localhost, or `MEDIAWIKI_ALLOW_HTTP=true`
+  is set for a wiki on a private container network: the host must then
+  be a private IP literal (no hostname, so DNS cannot move it), and the
+  opt-in is logged as a warning
 - Trailing slashes are stripped
 - API URL derived as `{MEDIAWIKI_URL}/api.php`
 

@@ -8,6 +8,15 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-03
+
+### Added
+
+- `MEDIAWIKI_ALLOW_HTTP=true` permits a plain `http://` `MEDIAWIKI_URL` for a
+  wiki reached over a private container network, where there is no TLS
+  endpoint. Off by default, and the host must be a private IP literal;
+  HTTPS is still required otherwise (RT #1546).
+
 ## [0.2.2] - 2026-10-31
 
 ### Security

@@ -261,6 +261,38 @@ class TestConfigSafety:
             if url:
                 os.environ["MEDIAWIKI_URL"] = url
 
+    @pytest.mark.parametrize(
+        ("url", "allow", "ok"),
+        [
+            ("http://10.89.20.2:81/w", None, False),
+            ("http://10.89.20.2:81/w", "false", False),
+            ("http://10.89.20.2:81/w", "true", True),
+            ("http://[fd00::2]:81/w", "true", True),
+            ("http://1.1.1.1/w", "true", False),
+            ("http://wiki.internal/w", "true", False),
+            ("http://localhost/w", None, True),
+            ("ftp://10.89.20.2/w", "true", False),
+        ],
+    )
+    def test_config_http_opt_in(
+        self, monkeypatch: pytest.MonkeyPatch, url: str, allow: str | None, ok: bool
+    ) -> None:
+        """Plain HTTP needs MEDIAWIKI_ALLOW_HTTP=true and a private IP literal."""
+        from mcp_mediawiki_crunchtools.config import Config
+        from mcp_mediawiki_crunchtools.errors import ConfigurationError
+
+        monkeypatch.setenv("MEDIAWIKI_URL", url)
+        if allow is None:
+            monkeypatch.delenv("MEDIAWIKI_ALLOW_HTTP", raising=False)
+        else:
+            monkeypatch.setenv("MEDIAWIKI_ALLOW_HTTP", allow)
+
+        if ok:
+            assert Config().wiki_url == url
+        else:
+            with pytest.raises(ConfigurationError):
+                Config()
+
     def test_config_api_url(self) -> None:
         """Config should derive api.php URL from wiki URL."""
         os.environ["MEDIAWIKI_URL"] = "https://example.com/w"
