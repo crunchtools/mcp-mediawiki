@@ -30,6 +30,7 @@ claude mcp add mcp-mediawiki-crunchtools \
 | `MEDIAWIKI_PASSWORD` | No | Bot/user password |
 | `MEDIAWIKI_HTTP_USER` | No | HTTP Basic Auth username (.htaccess) |
 | `MEDIAWIKI_HTTP_PASS` | No | HTTP Basic Auth password |
+| `MEDIAWIKI_ALLOW_HTTP` | No | `true` permits plain `http://` to a non-localhost wiki addressed by a private IP literal |
 
 ## Tools (19)
 

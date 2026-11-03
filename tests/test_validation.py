@@ -81,7 +81,9 @@ class TestCreatePageInput:
     def test_valid_full(self) -> None:
         """Full valid input should pass."""
         inp = CreatePageInput(
-            title="Test Page", content="Content here", summary="Created page",
+            title="Test Page",
+            content="Content here",
+            summary="Created page",
         )
         assert inp.title == "Test Page"
         assert inp.summary == "Created page"
@@ -117,7 +119,10 @@ class TestEditPageInput:
     def test_valid_edit(self) -> None:
         """Valid edit input should pass."""
         inp = EditPageInput(
-            title="Test", content="Updated", summary="Fixed typo", minor=True,
+            title="Test",
+            content="Updated",
+            summary="Fixed typo",
+            minor=True,
         )
         assert inp.title == "Test"
         assert inp.minor is True
@@ -135,7 +140,9 @@ class TestMovePageInput:
     def test_valid_move(self) -> None:
         """Valid move input should pass."""
         inp = MovePageInput(
-            from_title="Old Name", to_title="New Name", reason="Renaming",
+            from_title="Old Name",
+            to_title="New Name",
+            reason="Renaming",
         )
         assert inp.from_title == "Old Name"
         assert inp.to_title == "New Name"

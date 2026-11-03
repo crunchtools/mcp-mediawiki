@@ -4,6 +4,7 @@ This module handles all configuration including sensitive credentials.
 Passwords are stored as SecretStr to prevent accidental logging.
 """
 
+import ipaddress
 import logging
 import os
 from urllib.parse import urlparse
@@ -13,6 +14,33 @@ from pydantic import SecretStr
 from .errors import ConfigurationError
 
 logger = logging.getLogger(__name__)
+
+
+_LOCALHOST = ("localhost", "127.0.0.1", "::1")
+
+
+def _check_private_http(host: str) -> None:
+    """Allow plain HTTP to a non-localhost wiki only by opt-in, and only privately.
+
+    MEDIAWIKI_ALLOW_HTTP is for a wiki on a private container network on the
+    same host, where there is no TLS endpoint to talk to. The host must be a
+    private IP literal: a hostname could resolve somewhere public between this
+    check and the request, and send credentials across the internet in the clear.
+    """
+    if os.environ.get("MEDIAWIKI_ALLOW_HTTP", "").lower() != "true":
+        raise ConfigurationError(
+            "MEDIAWIKI_URL must use HTTPS for non-localhost URLs "
+            "(set MEDIAWIKI_ALLOW_HTTP=true for a private network)"
+        )
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ConfigurationError(
+            f"MEDIAWIKI_ALLOW_HTTP needs a private IP address, not the hostname {host!r}"
+        ) from exc
+    if not address.is_private:
+        raise ConfigurationError(f"MEDIAWIKI_ALLOW_HTTP needs a private IP address, not {host}")
+    logger.warning("MEDIAWIKI_ALLOW_HTTP is set: credentials travel unencrypted to %s", host)
 
 
 class Config:
@@ -40,16 +68,13 @@ class Config:
         parsed = urlparse(wiki_url)
         if not parsed.scheme or not parsed.netloc:
             raise ConfigurationError(
-                "Invalid MEDIAWIKI_URL: must be a valid URL "
-                "(e.g., https://en.wikipedia.org/w/)"
+                "Invalid MEDIAWIKI_URL: must be a valid URL (e.g., https://en.wikipedia.org/w/)"
             )
 
-        if parsed.scheme != "https" and parsed.hostname not in (
-            "localhost", "127.0.0.1", "::1",
-        ):
-            raise ConfigurationError(
-                "MEDIAWIKI_URL must use HTTPS for non-localhost URLs"
-            )
+        if parsed.scheme not in ("https", "http"):
+            raise ConfigurationError("MEDIAWIKI_URL must use http or https")
+        if parsed.scheme == "http" and parsed.hostname not in _LOCALHOST:
+            _check_private_http(parsed.hostname or "")
 
         self._wiki_url = wiki_url
 
@@ -60,9 +85,7 @@ class Config:
         self._password = SecretStr(password) if password else None
 
         if username and not password:
-            raise ConfigurationError(
-                "MEDIAWIKI_PASSWORD required when MEDIAWIKI_USERNAME is set"
-            )
+            raise ConfigurationError("MEDIAWIKI_PASSWORD required when MEDIAWIKI_USERNAME is set")
 
         http_user = os.environ.get("MEDIAWIKI_HTTP_USER")
         http_pass = os.environ.get("MEDIAWIKI_HTTP_PASS")
@@ -71,9 +94,7 @@ class Config:
         self._http_pass = SecretStr(http_pass) if http_pass else None
 
         if http_user and not http_pass:
-            raise ConfigurationError(
-                "MEDIAWIKI_HTTP_PASS required when MEDIAWIKI_HTTP_USER is set"
-            )
+            raise ConfigurationError("MEDIAWIKI_HTTP_PASS required when MEDIAWIKI_HTTP_USER is set")
 
         logger.info("Configuration loaded successfully (Wiki: %s)", self._wiki_url)
 
