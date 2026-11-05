@@ -85,8 +85,3 @@ skip = ["semgrep"]
 [tool.sdlc.push.pytest]
 env = { MEDIAWIKI_URL = "https://example.com/w" }
 
-[tool.sdlc.ci]
-# The CodeQL Action job uploads to the Security tab and annotates new
-# alerts on the pull request, so CI does not analyse a second time.
-# The push tier still gates on it.
-skip = ["codeql"]
