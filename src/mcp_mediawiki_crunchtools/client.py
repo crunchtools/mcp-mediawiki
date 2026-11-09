@@ -11,7 +11,9 @@ Authentication flow for write operations:
 5. CSRF token included in edit/delete/move requests
 """
 
+import json
 import logging
+from importlib.metadata import version
 from typing import Any
 
 import httpx
@@ -29,6 +31,96 @@ logger = logging.getLogger(__name__)
 
 MAX_RESPONSE_SIZE = 10 * 1024 * 1024
 REQUEST_TIMEOUT = 30.0
+
+# Identify this client by name. httpx otherwise sends `python-httpx/<version>`,
+# which Wikimedia's User-Agent policy refuses outright and which Cloudflare's
+# bot protection answers with an HTML challenge page instead of the API -- the
+# failure that cost an afternoon on mcp-wordpress (RT #1596). The version comes
+# from installed package metadata rather than `from . import __version__`,
+# because this package's `__init__` imports the server and that import would
+# close a cycle.
+USER_AGENT = (
+    f"mcp-mediawiki-crunchtools/{version('mcp-mediawiki-crunchtools')} "
+    "(+https://github.com/crunchtools/mcp-mediawiki)"
+)
+
+# How much of a body to quote back in an error. Enough to recognise a WAF page,
+# a login redirect or a proxy error; short enough to stay readable.
+BODY_SNIPPET_CHARS = 200
+
+
+def _body_snippet(body: bytes) -> str:
+    """A short, single-line excerpt of a response body, for an error message."""
+    # Slice the bytes, then decode only that: a WAF page can be megabytes, and
+    # decoding all of it to keep 200 characters copies it twice for nothing.
+    # Four times the snippet is enough slack for the whitespace a collapse
+    # removes; `replace` covers a multi-byte character the slice cut in half.
+    prefix = body[: BODY_SNIPPET_CHARS * 4]
+    collapsed = " ".join(prefix.decode("utf-8", errors="replace").split())
+    if not collapsed:
+        return "<empty body>"
+    if len(collapsed) > BODY_SNIPPET_CHARS or len(body) > len(prefix):
+        return collapsed[:BODY_SNIPPET_CHARS] + "..."
+    return collapsed
+
+
+# Query parameters whose value is a secret rather than part of the request.
+# MediaWiki's own `action`, `list`, `titles` and the rest are the diagnosis, so
+# this redacts by name instead of dropping the query string.
+REDACTED_PARAMS = frozenset({"lgpassword", "lgtoken", "password", "token"})
+
+
+def _safe_url(url: httpx.URL) -> httpx.URL:
+    """A URL fit to appear in an error message (Layer 1).
+
+    Userinfo goes first: `MEDIAWIKI_URL=https://bot:password@wiki/w/` is a
+    supported configuration and carries its secret before the path, where
+    redacting query parameters never reaches it.
+    """
+    url = url.copy_with(userinfo=b"")
+    for name in REDACTED_PARAMS & set(url.params):
+        url = url.copy_set_param(name, "***")
+    return url
+
+
+def _where(response: httpx.Response) -> str:
+    """Which request a response answered, for an error message.
+
+    The requested URL and not the configured api_url: an `http` base that 301s
+    to `https` returns an HTML body and reproduces this module's JSON error byte
+    for byte, and only the URL actually requested tells the two apart.
+    """
+    return (
+        f"{response.request.method} {_safe_url(response.request.url)} "
+        f"(HTTP {response.status_code}, {response.headers.get('content-type', 'no content-type')})"
+    )
+
+
+async def _read_capped(response: httpx.Response) -> bytes:
+    """Read the body, aborting as soon as it passes MAX_RESPONSE_SIZE.
+
+    The cap is enforced while reading. A `content-length` check alone is not a
+    ceiling: the header is optional, so a chunked reply carries none and walks
+    straight past it.
+    """
+    declared = response.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_RESPONSE_SIZE:
+        raise MediaWikiApiError(
+            "oversize",
+            f"{_where(response)} declared {declared} bytes, over the "
+            f"{MAX_RESPONSE_SIZE} byte limit",
+        )
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in response.aiter_bytes():
+        size += len(chunk)
+        if size > MAX_RESPONSE_SIZE:
+            raise MediaWikiApiError(
+                "oversize",
+                f"{_where(response)} sent over the {MAX_RESPONSE_SIZE} byte limit",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class MediaWikiClient:
@@ -62,6 +154,7 @@ class MediaWikiClient:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(REQUEST_TIMEOUT),
                 auth=auth,
+                headers={"User-Agent": USER_AGENT},
             )
         return self._client
 
@@ -86,10 +179,8 @@ class MediaWikiClient:
         if self._logged_in or not self._config.has_credentials:
             return
 
-        client = await self._get_client()
-
-        token_resp = await client.post(
-            self._config.api_url,
+        token_data = await self._request(
+            "POST",
             data={
                 "action": "login",
                 "lgname": self._config.username,
@@ -97,7 +188,6 @@ class MediaWikiClient:
                 "format": "json",
             },
         )
-        token_data = token_resp.json()
         login_result = token_data.get("login", {})
 
         if login_result.get("result") == "NeedToken":
@@ -107,8 +197,8 @@ class MediaWikiClient:
                 f"Unexpected login response: {login_result.get('result', 'unknown')}"
             )
 
-        login_resp = await client.post(
-            self._config.api_url,
+        login_data = await self._request(
+            "POST",
             data={
                 "action": "login",
                 "lgname": self._config.username,
@@ -117,7 +207,6 @@ class MediaWikiClient:
                 "format": "json",
             },
         )
-        login_data = login_resp.json()
         status = login_data.get("login", {}).get("result")
 
         if status != "Success":
@@ -134,10 +223,9 @@ class MediaWikiClient:
             CSRF token string.
         """
         await self._login()
-        client = await self._get_client()
 
-        resp = await client.get(
-            self._config.api_url,
+        token_response = await self._request(
+            "GET",
             params={
                 "action": "query",
                 "meta": "tokens",
@@ -145,9 +233,58 @@ class MediaWikiClient:
                 "format": "json",
             },
         )
-        token_response = resp.json()
         self._csrf_token = token_response["query"]["tokens"]["csrftoken"]
         return self._csrf_token
+
+    async def _request(
+        self,
+        method: str,
+        *,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """The one way a request leaves this module.
+
+        Every call site routed through here so the agent string, the ceiling and
+        the error detail cannot be forgotten in one of them -- which is how
+        `_login` ended up calling `.json()` on an unchecked body, where a
+        challenge page surfaces as a bare JSONDecodeError.
+
+        An `"error"` key in the payload is left for the caller: `post_action`
+        has to see `badtoken` itself before the generic handler turns it into a
+        user error.
+
+        Raises:
+            MediaWikiApiError: on a transport failure, an oversized body, an
+                unsuccessful status, or a body that is not JSON.
+        """
+        client = await self._get_client()
+        request = client.build_request(method, self._config.api_url, params=params, data=data)
+        try:
+            response = await client.send(request, stream=True)
+            try:
+                body = await _read_capped(response)
+            finally:
+                await response.aclose()
+        except httpx.TimeoutException as e:
+            raise MediaWikiApiError("timeout", f"Request timeout: {e}") from e
+        except httpx.RequestError as e:
+            raise MediaWikiApiError("network", f"Request failed: {e}") from e
+
+        if not response.is_success:
+            raise MediaWikiApiError(
+                str(response.status_code),
+                f"{_where(response)} returned {_body_snippet(body)}",
+            )
+
+        try:
+            payload: dict[str, Any] = json.loads(body)
+        except ValueError as e:
+            raise MediaWikiApiError(
+                "invalid_json",
+                f"{_where(response)} is not JSON ({e}): {_body_snippet(body)}",
+            ) from e
+        return payload
 
     async def _fetch_query(self, all_params: dict[str, Any]) -> dict[str, Any]:
         """Execute a single query request and validate the response.
@@ -158,29 +295,7 @@ class MediaWikiClient:
         Returns:
             Parsed JSON response data.
         """
-        client = await self._get_client()
-
-        try:
-            response = await client.get(
-                self._config.api_url,
-                params=all_params,
-            )
-        except httpx.TimeoutException as e:
-            raise MediaWikiApiError("timeout", f"Request timeout: {e}") from e
-        except httpx.RequestError as e:
-            raise MediaWikiApiError("network", f"Request failed: {e}") from e
-
-        content_length = response.headers.get("content-length")
-        if content_length and int(content_length) > MAX_RESPONSE_SIZE:
-            raise MediaWikiApiError("oversize", "Response too large")
-
-        if not response.is_success:
-            raise MediaWikiApiError(
-                str(response.status_code),
-                f"HTTP {response.status_code}",
-            )
-
-        response_json: dict[str, Any] = response.json()
+        response_json = await self._request("GET", params=all_params)
 
         if "error" in response_json:
             self._handle_api_error(response_json["error"])
@@ -267,7 +382,6 @@ class MediaWikiClient:
             Parse result data.
         """
         await self._login()
-        client = await self._get_client()
 
         all_params = {
             "action": "parse",
@@ -276,23 +390,7 @@ class MediaWikiClient:
             **params,
         }
 
-        try:
-            response = await client.get(
-                self._config.api_url,
-                params=all_params,
-            )
-        except httpx.TimeoutException as e:
-            raise MediaWikiApiError("timeout", f"Request timeout: {e}") from e
-        except httpx.RequestError as e:
-            raise MediaWikiApiError("network", f"Request failed: {e}") from e
-
-        if not response.is_success:
-            raise MediaWikiApiError(
-                str(response.status_code),
-                f"HTTP {response.status_code}",
-            )
-
-        response_json: dict[str, Any] = response.json()
+        response_json = await self._request("GET", params=all_params)
 
         if "error" in response_json:
             self._handle_api_error(response_json["error"])
@@ -324,8 +422,6 @@ class MediaWikiClient:
                 "Write operations require MEDIAWIKI_USERNAME and MEDIAWIKI_PASSWORD"
             )
 
-        client = await self._get_client()
-
         post_data = {
             "action": action,
             "format": "json",
@@ -337,23 +433,7 @@ class MediaWikiClient:
             csrf_token = await self._get_csrf_token()
             post_data["token"] = csrf_token
 
-        try:
-            response = await client.post(
-                self._config.api_url,
-                data=post_data,
-            )
-        except httpx.TimeoutException as e:
-            raise MediaWikiApiError("timeout", f"Request timeout: {e}") from e
-        except httpx.RequestError as e:
-            raise MediaWikiApiError("network", f"Request failed: {e}") from e
-
-        if not response.is_success:
-            raise MediaWikiApiError(
-                str(response.status_code),
-                f"HTTP {response.status_code}",
-            )
-
-        result: dict[str, Any] = response.json()
+        result = await self._request("POST", data=post_data)
 
         if "error" in result:
             error_code = result["error"].get("code", "unknown")
@@ -361,11 +441,7 @@ class MediaWikiClient:
                 self._csrf_token = None
                 csrf_token = await self._get_csrf_token()
                 post_data["token"] = csrf_token
-                response = await client.post(
-                    self._config.api_url,
-                    data=post_data,
-                )
-                result = response.json()
+                result = await self._request("POST", data=post_data)
                 if "error" in result:
                     self._handle_api_error(result["error"])
             else:
