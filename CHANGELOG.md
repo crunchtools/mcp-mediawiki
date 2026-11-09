@@ -10,19 +10,33 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [0.4.1] - 2026-11-09
 
+### Changed
+
+- **The bounded read is the fleet's shape: one `bytearray`, measured before
+  each chunk is copied in** (RT #1601, item I20). It accumulated chunks in a
+  list and ended with `b"".join()` before.
+
+  This was first described, here and in the 0.4.1 release notes, as halving a
+  peak that was twice the limit. That was wrong, and measuring it says so:
+  for an 8MB body, `list` + `join` peaks at 16MB and `bytearray` + `bytes()`
+  at 17MB. Both hold about two copies at the end, because returning immutable
+  `bytes` costs one copy whichever way the body was accumulated. The old shape
+  was marginally *cheaper*.
+
+  What this change actually buys is one shape across sixteen clients instead
+  of fifteen plus one, which is worth having on its own — a hand-copied stanza
+  that drifts is the failure mode RT #1601 exists to stop. The property that
+  does matter is the measure **order**, and this repo already had it right:
+  the running total was checked before the chunk was kept. `mcp-feed-reader`
+  is the repo that had that backwards, and its 0.6.1 carries a test measuring
+  the difference (42MB against a 10MB cap, before).
+
 ### Fixed
 
-- **The bounded read held two copies of the body at once.** It accumulated
-  chunks in a list and ended with `b"".join()`, so at the moment of the join
-  both the list and the joined result were in memory — the peak was twice the
-  10MB the limit exists to bound, and that 10MB was chosen as a peak rather
-  than as half of one. It reads into one `bytearray` now, measured before each
-  chunk is copied in, which is the shape the rest of the fleet carries
-  (RT #1601, item I20).
-
-  Two tests, as a pair, so the boundary is a claim rather than a coincidence: a
-  single chunk over the cap is refused, and a body of exactly the cap is
-  accepted.
+- Two tests, as a pair, so the cap boundary is a claim rather than a
+  coincidence: a single chunk over the cap is refused, and a body of exactly
+  the cap is accepted. The suite had only the first side, and only with many
+  small chunks — which cannot see a one-chunk-is-the-body case.
 
 ## [0.4.0] - 2026-11-08
 
