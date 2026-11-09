@@ -8,6 +8,22 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-09
+
+### Fixed
+
+- **The bounded read held two copies of the body at once.** It accumulated
+  chunks in a list and ended with `b"".join()`, so at the moment of the join
+  both the list and the joined result were in memory — the peak was twice the
+  10MB the limit exists to bound, and that 10MB was chosen as a peak rather
+  than as half of one. It reads into one `bytearray` now, measured before each
+  chunk is copied in, which is the shape the rest of the fleet carries
+  (RT #1601, item I20).
+
+  Two tests, as a pair, so the boundary is a claim rather than a coincidence: a
+  single chunk over the cap is refused, and a body of exactly the cap is
+  accepted.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
