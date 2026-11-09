@@ -75,10 +75,10 @@ class TestResponseCeiling:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query"})
 
-        message = str(caught.value)
-        assert "4096" in message
-        assert "https://example.com/w/api.php" in message
-        assert "GET" in message
+        assert str(caught.value) == (
+            "MediaWiki API error (oversize): GET https://example.com/w/api.php?action=query "
+            "(HTTP 200, application/json) sent over the 4096 byte limit"
+        )
 
     @pytest.mark.asyncio
     async def test_declared_length_over_the_cap_is_rejected_early(
@@ -95,7 +95,10 @@ class TestResponseCeiling:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query"})
 
-        assert "declared 128 bytes" in str(caught.value)
+        assert str(caught.value) == (
+            "MediaWiki API error (oversize): GET https://example.com/w/api.php?action=query "
+            "(HTTP 200, application/json) declared 128 bytes, over the 64 byte limit"
+        )
 
     @pytest.mark.asyncio
     async def test_a_malformed_content_length_does_not_crash(
@@ -133,11 +136,11 @@ class TestErrorNamesTheSite:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query"})
 
-        message = str(caught.value)
-        assert "GET" in message
-        assert "https://example.com/w/api.php?action=query" in message
-        assert "text/html" in message
-        assert "Just a moment" in message
+        assert str(caught.value) == (
+            "MediaWiki API error (invalid_json): GET https://example.com/w/api.php?action=query "
+            "(HTTP 200, text/html; charset=UTF-8) is not JSON "
+            "(Expecting value: line 1 column 1 (char 0)): " + challenge
+        )
 
     @pytest.mark.asyncio
     async def test_error_status_names_the_site_and_the_body(
@@ -153,10 +156,10 @@ class TestErrorNamesTheSite:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query"})
 
-        message = str(caught.value)
-        assert "HTTP 403" in message
-        assert "example.com" in message
-        assert "Attention Required!" in message
+        assert str(caught.value) == (
+            "MediaWiki API error (403): GET https://example.com/w/api.php?action=query "
+            "(HTTP 403, text/html) returned Attention Required!"
+        )
 
     @pytest.mark.asyncio
     async def test_an_empty_body_says_so_rather_than_nothing(
@@ -170,7 +173,10 @@ class TestErrorNamesTheSite:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query"})
 
-        assert "<empty body>" in str(caught.value)
+        assert str(caught.value) == (
+            "MediaWiki API error (502): GET https://example.com/w/api.php?action=query "
+            "(HTTP 502, text/plain) returned <empty body>"
+        )
 
 
 class TestErrorRedaction:
@@ -189,9 +195,46 @@ class TestErrorRedaction:
         with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
             await _client()._request("GET", params={"action": "query", "token": "csrf-secret"})
 
-        message = str(caught.value)
-        assert "sekrit" not in message
-        assert "csrf-secret" not in message
-        # What is left is still the diagnosis: which host, and which action.
-        assert "example.com/w/api.php" in message
-        assert "action=query" in message
+        # The whole message, because what it leaves OUT is the point and a
+        # substring check cannot show an absence. `%2A%2A%2A` is the redaction
+        # percent-encoded by httpx; the host and the action survive it.
+        assert str(caught.value) == (
+            "MediaWiki API error (403): "
+            "GET https://example.com/w/api.php?action=query&token=%2A%2A%2A "
+            "(HTTP 403, text/html) returned denied"
+        )
+        assert "sekrit" not in str(caught.value)
+        assert "csrf-secret" not in str(caught.value)
+
+
+class TestTransportFailures:
+    """Every read and write now shares one path, so its failure branches matter."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_becomes_an_api_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectTimeout("timed out")
+
+        with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
+            await _client()._request("GET", params={"action": "query"})
+
+        assert str(caught.value) == "MediaWiki API error (timeout): Request timeout: timed out"
+
+    @pytest.mark.asyncio
+    async def test_connect_failure_becomes_an_api_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-timeout transport failure takes the other branch, not the bare httpx error."""
+        monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("name or service not known")
+
+        with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
+            await _client()._request("GET", params={"action": "query"})
+
+        assert str(caught.value) == (
+            "MediaWiki API error (network): Request failed: name or service not known"
+        )
