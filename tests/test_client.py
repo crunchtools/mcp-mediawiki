@@ -81,6 +81,54 @@ class TestResponseCeiling:
         )
 
     @pytest.mark.asyncio
+    async def test_one_oversized_chunk_is_refused_before_it_is_copied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`aiter_bytes()` promises nothing about chunk size: one can be the body.
+
+        The previous version counted the chunk and then appended it, which is
+        the right order -- but it accumulated into a list and ended with
+        `b"".join()`, holding both copies at once. Either way the thing being
+        tested here is that nothing over the cap reaches the buffer.
+        """
+        monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
+        monkeypatch.setattr(client_mod, "MAX_RESPONSE_SIZE", 4096)
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                content=_endless(b"y" * 8192, 1),
+            )
+
+        with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
+            await _client()._request("GET", params={"action": "query"})
+
+        assert str(caught.value) == (
+            "MediaWiki API error (oversize): GET https://example.com/w/api.php?action=query "
+            "(HTTP 200, application/json) sent over the 4096 byte limit"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_body_exactly_at_the_cap_is_accepted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other side of the boundary, so it is a claim and not a coincidence."""
+        monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
+        payload = b'{"query":{"pad":"' + b"p" * 100 + b'"}}'
+        monkeypatch.setattr(client_mod, "MAX_RESPONSE_SIZE", len(payload))
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, headers={"content-type": "application/json"}, content=payload
+            )
+
+        with _transport(handler):
+            result = await _client()._request("GET", params={"action": "query"})
+
+        assert result == {"query": {"pad": "p" * 100}}
+
+    @pytest.mark.asyncio
     async def test_declared_length_over_the_cap_is_rejected_early(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

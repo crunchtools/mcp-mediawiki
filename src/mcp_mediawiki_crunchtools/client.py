@@ -102,6 +102,11 @@ async def _read_capped(response: httpx.Response) -> bytes:
     The cap is enforced while reading. A `content-length` check alone is not a
     ceiling: the header is optional, so a chunked reply carries none and walks
     straight past it.
+
+    One buffer, measured before the copy. A chunk list plus `b"".join()` holds
+    both copies at once at the end, so the peak is twice the limit this exists
+    to bound -- and the limit's own 10MB was chosen as a peak, not as half of
+    one.
     """
     declared = response.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_RESPONSE_SIZE:
@@ -110,17 +115,15 @@ async def _read_capped(response: httpx.Response) -> bytes:
             f"{_where(response)} declared {declared} bytes, over the "
             f"{MAX_RESPONSE_SIZE} byte limit",
         )
-    chunks: list[bytes] = []
-    size = 0
+    body = bytearray()
     async for chunk in response.aiter_bytes():
-        size += len(chunk)
-        if size > MAX_RESPONSE_SIZE:
+        if len(body) + len(chunk) > MAX_RESPONSE_SIZE:
             raise MediaWikiApiError(
                 "oversize",
                 f"{_where(response)} sent over the {MAX_RESPONSE_SIZE} byte limit",
             )
-        chunks.append(chunk)
-    return b"".join(chunks)
+        body += chunk
+    return bytes(body)
 
 
 class MediaWikiClient:
