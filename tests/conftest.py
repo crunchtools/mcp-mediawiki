@@ -1,8 +1,9 @@
 """Shared test fixtures for mcp-mediawiki tests."""
 
 import os
-from collections.abc import Generator
-from unittest.mock import AsyncMock, patch
+from collections.abc import Callable, Generator, Iterable
+from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -41,10 +42,44 @@ def _mock_response(
     )
 
 
-def _patch_client(mock_response: httpx.Response):
-    """Patch the httpx AsyncClient to return a mock response.
+Handler = Callable[[httpx.Request], httpx.Response]
 
-    Sets MEDIAWIKI_URL so config initializes, then mocks the HTTP layer.
+
+def _answer(template: httpx.Response, request: httpx.Request) -> httpx.Response:
+    """A fresh response with a template's status, type and body, for one request.
+
+    Fresh because a streamed body can be read once, and because the error
+    messages under test name `response.request.url` -- which is the URL the
+    client actually built, not the placeholder a template carries. Content-length
+    is dropped so httpx recomputes it for the body it is given.
+    """
+    headers = {k: v for k, v in template.headers.items() if k.lower() != "content-length"}
+    return httpx.Response(
+        template.status_code, headers=headers, content=template.content, request=request
+    )
+
+
+def _transport(handler: Handler):
+    """Put every client the process builds on a MockTransport running `handler`.
+
+    A real `httpx.AsyncClient` over a fake transport, rather than an AsyncMock
+    standing in for the client: the client is what reads the body in bounded
+    pieces and sets the User-Agent, so mocking its methods would mock away the
+    behaviour these tests exist to hold (constitution 1.36.0, Layer 3).
+    """
+    real = httpx.AsyncClient
+
+    def factory(**kwargs: Any) -> httpx.AsyncClient:
+        kwargs.pop("transport", None)
+        return real(transport=httpx.MockTransport(handler), **kwargs)
+
+    return patch.object(httpx, "AsyncClient", factory)
+
+
+def _patch_client(mock_response: httpx.Response):
+    """Serve one response to every request, over a real client and a fake transport.
+
+    Sets MEDIAWIKI_URL so config initializes.
     """
     import mcp_mediawiki_crunchtools.client as client_mod
     import mcp_mediawiki_crunchtools.config as config_mod
@@ -54,12 +89,28 @@ def _patch_client(mock_response: httpx.Response):
 
     os.environ.setdefault("MEDIAWIKI_URL", "https://example.com/w")
 
-    mock_http = AsyncMock(spec=httpx.AsyncClient)
-    mock_http.get = AsyncMock(return_value=mock_response)
-    mock_http.post = AsyncMock(return_value=mock_response)
+    return _transport(lambda request: _answer(mock_response, request))
 
-    return patch.object(
-        httpx,
-        "AsyncClient",
-        return_value=mock_http,
-    )
+
+def _patch_client_sequence(responses: Iterable[httpx.Response]):
+    """Serve an ordered sequence, for a flow that makes several calls.
+
+    One request too many is an assertion rather than a silent repeat, so a
+    login flow that grows a call fails loudly.
+    """
+    import mcp_mediawiki_crunchtools.client as client_mod
+    import mcp_mediawiki_crunchtools.config as config_mod
+
+    client_mod._client = None
+    config_mod._config = None
+
+    os.environ.setdefault("MEDIAWIKI_URL", "https://example.com/w")
+    remaining = iter(list(responses))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        try:
+            return _answer(next(remaining), request)
+        except StopIteration:
+            raise AssertionError(f"unexpected request: {request.method} {request.url}") from None
+
+    return _transport(handler)

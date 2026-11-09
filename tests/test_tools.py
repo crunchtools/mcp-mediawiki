@@ -6,11 +6,18 @@ Integration tests with a real MediaWiki instance should be run separately.
 
 import os
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qsl
 
 import httpx
 import pytest
 
-from tests.conftest import _mock_response, _patch_client
+from tests.conftest import (
+    _answer,
+    _mock_response,
+    _patch_client,
+    _patch_client_sequence,
+    _transport,
+)
 
 
 class TestToolRegistration:
@@ -100,31 +107,39 @@ SESSION_ACTIONS = frozenset({"login"})
 
 def _recording_client(
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[AsyncMock, list[dict[str, object]]]:
-    """Mock the HTTP layer with credentials set; record each request's parameters."""
+) -> tuple[object, list[dict[str, object]]]:
+    """A transport patch with credentials set; records each request's parameters.
+
+    The parameters are read back off the real `httpx.Request` the client built,
+    so what is recorded is what would have gone on the wire -- a GET's query
+    string or a POST's form body -- rather than what a mocked method was handed.
+    """
     monkeypatch.setenv("MEDIAWIKI_URL", "https://example.com/w")
     monkeypatch.setenv("MEDIAWIKI_USERNAME", "bot")
     monkeypatch.setenv("MEDIAWIKI_PASSWORD", "botpass")
     sent: list[dict[str, object]] = []
 
-    async def _get(_url: str, params: dict[str, object]) -> httpx.Response:
-        sent.append(params)
-        return _mock_response(
-            json_data={"query": {"tokens": {"csrftoken": "csrf+\\"}}, "parse": {}}
-        )
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            sent.append(dict(request.url.params))
+            return _answer(
+                _mock_response(
+                    json_data={"query": {"tokens": {"csrftoken": "csrf+\\"}}, "parse": {}}
+                ),
+                request,
+            )
 
-    async def _post(_url: str, data: dict[str, object]) -> httpx.Response:
+        data = dict(parse_qsl(request.content.decode()))
         sent.append(data)
         if data["action"] != "login":
-            return _mock_response(json_data={data["action"]: {"result": "Success"}})
-        if "lgtoken" in data:
-            return _mock_response(json_data={"login": {"result": "Success"}})
-        return _mock_response(json_data={"login": {"result": "NeedToken", "token": "t"}})
+            payload = {data["action"]: {"result": "Success"}}
+        elif "lgtoken" in data:
+            payload = {"login": {"result": "Success"}}
+        else:
+            payload = {"login": {"result": "NeedToken", "token": "t"}}
+        return _answer(_mock_response(json_data=payload), request)
 
-    mock_http = AsyncMock(spec=httpx.AsyncClient)
-    mock_http.get = AsyncMock(side_effect=_get)
-    mock_http.post = AsyncMock(side_effect=_post)
-    return mock_http, sent
+    return _transport(handler), sent
 
 
 class TestReadOnlyAnnotation:
@@ -152,8 +167,8 @@ class TestReadOnlyAnnotation:
     ) -> None:
         from mcp_mediawiki_crunchtools.server import mcp
 
-        mock_http, sent = _recording_client(monkeypatch)
-        with patch.object(httpx, "AsyncClient", return_value=mock_http):
+        transport, sent = _recording_client(monkeypatch)
+        with transport:
             await mcp.call_tool(name, TOOL_CALLS[name])
 
         actions = [request["action"] for request in sent]
@@ -172,8 +187,8 @@ class TestReadOnlyAnnotation:
         """The recorder above does see a write, so the read assertion can fail."""
         from mcp_mediawiki_crunchtools.server import mcp
 
-        mock_http, sent = _recording_client(monkeypatch)
-        with patch.object(httpx, "AsyncClient", return_value=mock_http):
+        transport, sent = _recording_client(monkeypatch)
+        with transport:
             await mcp.call_tool(name, TOOL_CALLS[name])
 
         actions = {request["action"] for request in sent}
@@ -513,21 +528,15 @@ class TestPageTools:
         os.environ["MEDIAWIKI_PASSWORD"] = "testpass"
 
         try:
-            mock_http = AsyncMock(spec=httpx.AsyncClient)
-            mock_http.get = AsyncMock(
-                side_effect=[csrf_token_resp],
-            )
-            mock_http.post = AsyncMock(
-                side_effect=[login_needtoken_resp, login_success_resp, edit_resp],
-            )
-
-            with patch.object(httpx, "AsyncClient", return_value=mock_http):
-                import mcp_mediawiki_crunchtools.client as client_mod
-                import mcp_mediawiki_crunchtools.config as config_mod
-
-                client_mod._client = None
-                config_mod._config = None
-
+            # The flow in order: login token, login, CSRF token, then the write.
+            with _patch_client_sequence(
+                [
+                    login_needtoken_resp,
+                    login_success_resp,
+                    csrf_token_resp,
+                    edit_resp,
+                ]
+            ):
                 from mcp_mediawiki_crunchtools.tools import create_page
 
                 result = await create_page(
@@ -568,21 +577,15 @@ class TestPageTools:
         os.environ["MEDIAWIKI_PASSWORD"] = "testpass"
 
         try:
-            mock_http = AsyncMock(spec=httpx.AsyncClient)
-            mock_http.get = AsyncMock(
-                side_effect=[csrf_token_resp],
-            )
-            mock_http.post = AsyncMock(
-                side_effect=[login_needtoken_resp, login_success_resp, edit_resp],
-            )
-
-            with patch.object(httpx, "AsyncClient", return_value=mock_http):
-                import mcp_mediawiki_crunchtools.client as client_mod
-                import mcp_mediawiki_crunchtools.config as config_mod
-
-                client_mod._client = None
-                config_mod._config = None
-
+            # The flow in order: login token, login, CSRF token, then the write.
+            with _patch_client_sequence(
+                [
+                    login_needtoken_resp,
+                    login_success_resp,
+                    csrf_token_resp,
+                    edit_resp,
+                ]
+            ):
                 from mcp_mediawiki_crunchtools.tools import edit_page
 
                 result = await edit_page(

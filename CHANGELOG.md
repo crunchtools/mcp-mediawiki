@@ -8,6 +8,51 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
+### Added
+
+- **The client says what it is.** Every request now carries
+  `User-Agent: mcp-mediawiki-crunchtools/<version> (+<repo url>)`, with the
+  version read from installed package metadata so it cannot drift from
+  `pyproject.toml`. httpx's default is `python-httpx/<version>`, which
+  Wikimedia's User-Agent policy refuses outright and which Cloudflare's bot
+  protection answers with an HTML challenge page instead of the API — the
+  failure that cost an afternoon on mcp-wordpress (RT #1596). This server was
+  one policy change away from the same outage.
+
+### Fixed
+
+- **The response ceiling is now a ceiling.** It read the `content-length`
+  header and nothing else, and that header is optional: a chunked reply carried
+  none and was read without limit. The body is now read in bounded pieces and
+  the read aborts the moment the running total passes `MAX_RESPONSE_SIZE`. The
+  header is still an early reject, now guarded so a malformed value is not an
+  unhandled `ValueError`.
+
+- **An error says which site answered, and with what.** Failures reported
+  `HTTP 403` and nothing else, so a WAF challenge, a login redirect and a
+  genuine API error were one message. They now name the method, the full
+  requested URL, the status, the content-type and a short body snippet — the
+  full URL and not the configured one, because an `http` base that 301s to
+  `https` returns an HTML body and reproduces this module's JSON error byte for
+  byte.
+
+- **`_login` checked nothing at all.** Its two calls went straight to `.json()`
+  on an unread body, so a challenge page there surfaced as a bare
+  `JSONDecodeError`. Every request in the module now goes through one
+  `_request`, which is what makes that impossible rather than merely fixed.
+
+### Changed
+
+- Client tests drive a real `httpx.AsyncClient` over `httpx.MockTransport`
+  instead of an `AsyncMock` standing in for the client. The client is what sets
+  the agent string and what reads the body in pieces, so mocking its methods
+  mocked away the behaviour the tests are now there to hold.
+
+- Inherits constitution v1.36.0, whose MCP Server profile 1.8.0 states this
+  contract and checks it.
+
 ## [0.3.0] - 2026-11-03
 
 ### Added

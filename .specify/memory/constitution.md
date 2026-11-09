@@ -2,9 +2,9 @@
 
 > **Version:** 1.2.0
 > **Ratified:** 2026-03-01
-> **Amended:** 2026-11-03
+> **Amended:** 2026-11-08
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.31.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.36.0
 > **Profile:** MCP Server
 
 This file holds what is specific to mcp-mediawiki. The fleet rules and the
@@ -25,7 +25,8 @@ restated here.
   at 255 characters, content at 500,000, edit summaries at 500, search
   strings at 300, prefixes at 255.
 - **API:** every write fetches a CSRF token first; requests time out after
-  30s; responses are capped at 10MB.
+  30s; responses are capped at 10MB while reading, not from the
+  `content-length` header a chunked reply need not send.
 - **Surface:** pure API wrappers against `api.php`. No filesystem access,
   shell execution or code evaluation.
 
