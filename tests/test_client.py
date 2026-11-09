@@ -171,3 +171,27 @@ class TestErrorNamesTheSite:
             await _client()._request("GET", params={"action": "query"})
 
         assert "<empty body>" in str(caught.value)
+
+
+class TestErrorRedaction:
+    """Layer 1 applies to an error message: the URL in it carries no secret."""
+
+    @pytest.mark.asyncio
+    async def test_userinfo_and_credential_params_are_redacted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A configured `https://bot:password@host/w/` is supported, and secret."""
+        monkeypatch.setenv("MEDIAWIKI_URL", "https://bot:sekrit@example.com/w")
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403, headers={"content-type": "text/html"}, text="denied")
+
+        with _transport(handler), pytest.raises(MediaWikiApiError) as caught:
+            await _client()._request("GET", params={"action": "query", "token": "csrf-secret"})
+
+        message = str(caught.value)
+        assert "sekrit" not in message
+        assert "csrf-secret" not in message
+        # What is left is still the diagnosis: which host, and which action.
+        assert "example.com/w/api.php" in message
+        assert "action=query" in message

@@ -64,15 +64,34 @@ def _body_snippet(body: bytes) -> str:
     return collapsed
 
 
+# Query parameters whose value is a secret rather than part of the request.
+# MediaWiki's own `action`, `list`, `titles` and the rest are the diagnosis, so
+# this redacts by name instead of dropping the query string.
+REDACTED_PARAMS = frozenset({"lgpassword", "lgtoken", "password", "token"})
+
+
+def _safe_url(url: httpx.URL) -> httpx.URL:
+    """A URL fit to appear in an error message (Layer 1).
+
+    Userinfo goes first: `MEDIAWIKI_URL=https://bot:password@wiki/w/` is a
+    supported configuration and carries its secret before the path, where
+    redacting query parameters never reaches it.
+    """
+    url = url.copy_with(userinfo=b"")
+    for name in REDACTED_PARAMS & set(url.params):
+        url = url.copy_set_param(name, "***")
+    return url
+
+
 def _where(response: httpx.Response) -> str:
     """Which request a response answered, for an error message.
 
-    `request.url` and not the configured api_url: an `http` base that 301s to
-    `https` returns an HTML body and reproduces this module's JSON error byte
+    The requested URL and not the configured api_url: an `http` base that 301s
+    to `https` returns an HTML body and reproduces this module's JSON error byte
     for byte, and only the URL actually requested tells the two apart.
     """
     return (
-        f"{response.request.method} {response.request.url} "
+        f"{response.request.method} {_safe_url(response.request.url)} "
         f"(HTTP {response.status_code}, {response.headers.get('content-type', 'no content-type')})"
     )
 
