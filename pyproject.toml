@@ -85,3 +85,6 @@ skip = ["semgrep"]
 [tool.sdlc.push.pytest]
 env = { MEDIAWIKI_URL = "https://example.com/w" }
 
+
+[tool.sdlc]
+repo-kinds = ["mcp-server"]
