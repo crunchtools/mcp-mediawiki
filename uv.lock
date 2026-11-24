@@ -1066,7 +1066,7 @@ wheels = [
 
 [[package]]
 name = "mcp-mediawiki-crunchtools"
-version = "0.4.3"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
