@@ -87,4 +87,13 @@ env = { MEDIAWIKI_URL = "https://example.com/w" }
 
 
 [tool.sdlc]
+stacks = ["python", "container"]  # gate the Containerfile on every pull request
+# Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
+publish = "pypi"
 repo-kinds = ["mcp-server"]
+
+[tool.sdlc.image]
+# Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
+image = "quay.io/crunchtools/mcp-mediawiki"
+boot = "mcp"
+boot-env = "MEDIAWIKI_URL=https://wiki.invalid/w/\n"
